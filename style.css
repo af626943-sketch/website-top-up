@@ -1967,3 +1967,147 @@ ul {
   gap: 8px;
 }
 
+/* ==========================================================================
+   TRANSACTION HISTORY TABLE & AUTHENTICATION TOGGLES
+   ========================================================================== */
+
+.auth-tabs {
+  display: flex;
+  margin-bottom: 25px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.auth-tab.active {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
+
+.cyber-table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--bg-secondary);
+  border: var(--border-cyber);
+  border-radius: 12px;
+  box-shadow: var(--shadow-neon-cyan);
+  margin-top: 30px;
+  backdrop-filter: blur(8px);
+}
+
+.cyber-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 1.05rem;
+  letter-spacing: 0.5px;
+}
+
+.cyber-table th {
+  background: rgba(20, 26, 54, 0.9);
+  padding: 16px 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  border-bottom: 2px solid rgba(0, 240, 255, 0.2);
+  white-space: nowrap;
+}
+
+.cyber-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.cyber-table tbody tr {
+  transition: var(--transition-fast);
+}
+
+.cyber-table tbody tr:hover {
+  background: rgba(0, 240, 255, 0.03);
+}
+
+.cyber-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.status-badge.success {
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: inset 0 0 5px rgba(0, 240, 255, 0.15);
+  text-shadow: 0 0 5px var(--accent-cyan);
+}
+
+.status-badge.pending {
+  background: rgba(255, 214, 10, 0.1);
+  border: 1px solid var(--accent-yellow);
+  color: var(--accent-yellow);
+  box-shadow: inset 0 0 5px rgba(255, 214, 10, 0.15);
+  text-shadow: 0 0 5px var(--accent-yellow);
+}
+
+.status-badge.failed {
+  background: rgba(255, 45, 85, 0.1);
+  border: 1px solid var(--accent-pink);
+  color: var(--accent-pink);
+  box-shadow: inset 0 0 5px rgba(255, 45, 85, 0.15);
+  text-shadow: 0 0 5px var(--accent-pink);
+}
+
+/* Pagination / Filter Details */
+.history-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.no-transactions {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+}
+
+.no-transactions i {
+  font-size: 3rem;
+  color: var(--accent-purple);
+  filter: drop-shadow(0 0 10px rgba(191, 90, 242, 0.5));
+  margin-bottom: 15px;
+}
+

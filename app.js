@@ -2,8 +2,8 @@
    GAMEZONE STORE - FUTURISTIC GAME TOP UP CORE JAVASCRIPT
    ========================================================================== */
 
-// 1. GAME DATABASE
-const GAMES_DATA = [
+// 1. GAME DATABASE (INITIALIZED FROM LOCALSTORAGE IF AVAILABLE)
+const DEFAULT_GAMES_DATA = [
   {
     id: "mlbb",
     name: "Mobile Legends: Bang Bang",
@@ -51,7 +51,7 @@ const GAMES_DATA = [
       { id: "pubg_60", name: "60 Unknown Cash (UC)", price: 15000, formattedPrice: "Rp 15.000" },
       { id: "pubg_325", name: "325 Unknown Cash (UC)", price: 75000, formattedPrice: "Rp 75.000" },
       { id: "pubg_660", name: "660 Unknown Cash (UC)", price: 145000, formattedPrice: "Rp 145.000" },
-      { id: "pubg_1800", name: "1800 Unknown Cash (UC)", price: 37000, formattedPrice: "Rp 370.000" },
+      { id: "pubg_1800", name: "1800 Unknown Cash (UC)", price: 370000, formattedPrice: "Rp 370.000" }, // Typo price 37000 fixed to 370000
       { id: "pubg_3850", name: "3850 Unknown Cash (UC)", price: 730000, formattedPrice: "Rp 730.000" },
       { id: "pubg_8100", name: "8100 Unknown Cash (UC)", price: 1450000, formattedPrice: "Rp 1.450.000" }
     ]
@@ -75,6 +75,11 @@ const GAMES_DATA = [
   }
 ];
 
+if (!localStorage.getItem('gamezone_games')) {
+  localStorage.setItem('gamezone_games', JSON.stringify(DEFAULT_GAMES_DATA));
+}
+const GAMES_DATA = JSON.parse(localStorage.getItem('gamezone_games'));
+
 // 2. GLOBAL STATE
 let appState = {
   selectedGame: null,
@@ -86,9 +91,15 @@ let appState = {
 // 2b. AUTHENTICATION HELPERS
 function updateAuthNavbar() {
   const authContainer = document.getElementById('auth-nav-item');
+  const historyNavItem = document.getElementById('history-nav-item');
+  const historyFooterItem = document.getElementById('history-footer-item');
+  
   if (!authContainer) return;
   
   if (appState.user) {
+    if (historyNavItem) historyNavItem.style.display = 'block';
+    if (historyFooterItem) historyFooterItem.style.display = 'block';
+    
     authContainer.innerHTML = `
       <button id="btn-logout" class="nav-link auth-btn" style="border: none; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; font-family: var(--font-ui); font-size: 1.15rem; letter-spacing: 1px; color: var(--text-secondary);">
         <i class="fa-solid fa-right-from-bracket"></i> Keluar (${appState.user.name})
@@ -97,13 +108,17 @@ function updateAuthNavbar() {
     
     // Add hover effect style dynamically if needed, or styles in CSS
     const btnLogout = document.getElementById('btn-logout');
-    btnLogout.addEventListener('mouseenter', () => btnLogout.style.color = 'var(--text-primary)');
-    btnLogout.addEventListener('mouseleave', () => btnLogout.style.color = 'var(--text-secondary)');
-    
-    btnLogout.addEventListener('click', () => {
-      logoutUser();
-    });
+    if (btnLogout) {
+      btnLogout.addEventListener('mouseenter', () => btnLogout.style.color = 'var(--text-primary)');
+      btnLogout.addEventListener('mouseleave', () => btnLogout.style.color = 'var(--text-secondary)');
+      btnLogout.addEventListener('click', () => {
+        logoutUser();
+      });
+    }
   } else {
+    if (historyNavItem) historyNavItem.style.display = 'none';
+    if (historyFooterItem) historyFooterItem.style.display = 'none';
+    
     authContainer.innerHTML = `
       <a href="#/login" class="nav-link auth-btn" data-path="/login">
         <i class="fa-solid fa-right-to-bracket"></i> Sign or Login
@@ -213,6 +228,8 @@ function renderView() {
     renderContactView();
   } else if (hash === '#/login') {
     renderLoginView();
+  } else if (hash === '#/history') {
+    renderHistoryView();
   } else {
     // 404 Fallback
     renderHomeView();
@@ -231,6 +248,8 @@ function updateNavbarActiveState(hash) {
     if (hash === '#/' && path === '/') {
       link.classList.add('active');
     } else if (hash.startsWith('#/products') && path === '/products') {
+      link.classList.add('active');
+    } else if (hash.startsWith('#/history') && path === '/history') {
       link.classList.add('active');
     } else if (hash.startsWith('#/about') && path === '/about') {
       link.classList.add('active');
@@ -676,24 +695,53 @@ function renderCheckoutView(gameId) {
     const finalUserId = userIdInput.value.trim();
     const finalServerId = serverIdInput ? serverIdInput.value.trim() : '';
 
+    if (!appState.user) {
+      showToast("Perlu Login", "Silakan login terlebih dahulu untuk melakukan transaksi.", "error");
+      navigateTo('#/login');
+      return;
+    }
+
     btnSubmit.setAttribute('disabled', 'true');
-    btnSubmit.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px;"></div> Memproses...`;
+    btnSubmit.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
     // Process payment response
     setTimeout(() => {
-      // Create invoice/notification text
-      const orderMessage = `Top Up ${pkg.name} untuk game ${game.name} (ID: ${finalUserId}${finalServerId ? ` / Server: ${finalServerId}` : ''}) via ${appState.selectedPayment} BERHASIL diproses! Terima kasih telah menggunakan GameZone Store.`;
+      // Generate unique invoice number: INV-timestamp-random
+      const timestamp = Math.floor(Date.now() / 1000);
+      const rand = Math.floor(100 + Math.random() * 900);
+      const invoiceId = `INV-${timestamp}-${rand}`;
       
-      showToast("Transaksi Sukses!", "Top up Anda telah sukses dikonfirmasi.", "success");
+      // Save to transactions in localStorage
+      const transactions = JSON.parse(localStorage.getItem('gamezone_transactions')) || [];
+      const newTransaction = {
+        id: invoiceId,
+        user_email: appState.user.email,
+        game_id: game.id,
+        game_name: game.name,
+        game_image: game.image,
+        package_id: pkg.id,
+        package_name: pkg.name,
+        user_game_id: finalUserId,
+        server_id: finalServerId || null,
+        payment_method: appState.selectedPayment,
+        price: pkg.price,
+        formatted_price: pkg.formattedPrice,
+        status: 'SUCCESS',
+        created_at: new Date().toISOString()
+      };
+      transactions.push(newTransaction);
+      localStorage.setItem('gamezone_transactions', JSON.stringify(transactions));
+
+      showToast("Transaksi Sukses!", `Top up ${pkg.name} berhasil diproses!`, "success");
       
       // Clear state
       appState.selectedGame = null;
       appState.selectedPackage = null;
       appState.selectedPayment = null;
 
-      // Redirect home after brief timeout
+      // Redirect history page
       setTimeout(() => {
-        navigateTo('#/');
+        navigateTo('#/history');
       }, 500);
 
     }, 2000);
@@ -825,15 +873,25 @@ function renderContactView() {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     
-    const name = document.getElementById('contact-name').value;
-    const email = document.getElementById('contact-email').value;
-    const msg = document.getElementById('contact-msg').value;
+    const name = document.getElementById('contact-name').value.trim();
+    const email = document.getElementById('contact-email').value.trim();
+    const msg = document.getElementById('contact-msg').value.trim();
 
     const btnSubmit = form.querySelector('.btn-contact-submit');
     btnSubmit.setAttribute('disabled', 'true');
     btnSubmit.innerHTML = `Memproses...`;
 
     setTimeout(() => {
+      // Save contact message to localStorage database
+      const messages = JSON.parse(localStorage.getItem('gamezone_messages')) || [];
+      messages.push({
+        name: name,
+        email: email,
+        message: msg,
+        created_at: new Date().toISOString()
+      });
+      localStorage.setItem('gamezone_messages', JSON.stringify(messages));
+
       showToast("Pesan Terkirim!", `Halo ${name}, pesan Anda berhasil dikirim! Tim kami akan menghubungi Anda segera.`, "success");
       
       form.reset();
@@ -844,30 +902,86 @@ function renderContactView() {
 }
 
 // --- VIEW 7: LOGIN ---
+// --- DATABASE MIGRATIONS/HELPERS (LOCALSTORAGE WRAPPER) ---
+function getUsersFromDb() {
+  return JSON.parse(localStorage.getItem('gamezone_users')) || [];
+}
+
+function saveUserToDb(user) {
+  const users = getUsersFromDb();
+  users.push(user);
+  localStorage.setItem('gamezone_users', JSON.stringify(users));
+}
+
+// --- VIEW 7: LOGIN ---
 function renderLoginView() {
   appContent.innerHTML = `
     <div class="container fade-in" style="display: flex; justify-content: center; align-items: center; padding: 60px 24px;">
       <div class="contact-form-card" style="width: 100%; max-width: 450px; border: var(--border-cyber); box-shadow: var(--shadow-neon-purple); background: var(--bg-secondary);">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h2 style="font-family: var(--font-title); font-size: 1.8rem; margin-bottom: 10px; color: #fff;">MASUK KE <span class="highlight" style="color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);">GAMEZONE</span></h2>
-          <p style="color: var(--text-secondary); font-size: 0.9rem;">Login & Hubungkan Akun Anda</p>
+        
+        <!-- Tab Toggles -->
+        <div class="auth-tabs">
+          <button id="tab-login" class="auth-tab active">MASUK</button>
+          <button id="tab-register" class="auth-tab">DAFTAR</button>
         </div>
 
-        <form id="login-form" class="contact-form" style="display: flex; flex-direction: column; gap: 20px;">
-          <div class="form-field">
-            <label for="login-email">Alamat Email</label>
-            <input type="email" id="login-email" placeholder="nama@email.com" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
-          </div>
-          
-          <div class="form-field">
-            <label for="login-password">Kata Sandi</label>
-            <input type="password" id="login-password" placeholder="••••••••" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+        <!-- Login Panel -->
+        <div id="auth-login-panel">
+          <div style="text-align: center; margin-bottom: 25px;">
+            <h2 style="font-family: var(--font-title); font-size: 1.6rem; margin-bottom: 10px; color: #fff;">MASUK KE <span style="color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);">GAMEZONE</span></h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Hubungkan akun GameZone Anda</p>
           </div>
 
-          <button type="submit" id="btn-email-login" class="btn-cyber" style="width: 100%; text-align: center; padding: 14px 20px; font-size: 1.05rem; border: none;">
-            Masuk dengan Email <i class="fa-solid fa-right-to-bracket"></i>
-          </button>
-        </form>
+          <form id="login-form" class="contact-form" style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="form-field">
+              <label for="login-email">Alamat Email</label>
+              <input type="email" id="login-email" placeholder="nama@email.com" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+            
+            <div class="form-field">
+              <label for="login-password">Kata Sandi</label>
+              <input type="password" id="login-password" placeholder="••••••••" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+
+            <button type="submit" id="btn-email-login" class="btn-cyber" style="width: 100%; text-align: center; padding: 14px 20px; font-size: 1.05rem; border: none;">
+              Masuk Sekarang <i class="fa-solid fa-right-to-bracket"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- Register Panel -->
+        <div id="auth-register-panel" style="display: none;">
+          <div style="text-align: center; margin-bottom: 25px;">
+            <h2 style="font-family: var(--font-title); font-size: 1.6rem; margin-bottom: 10px; color: #fff;">DAFTAR AKUN <span style="color: var(--accent-purple); text-shadow: 0 0 10px rgba(191, 90, 242, 0.4);">BARU</span></h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Mulai petualangan top up instan Anda</p>
+          </div>
+
+          <form id="register-form" class="contact-form" style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="form-field">
+              <label for="register-name">Nama Lengkap</label>
+              <input type="text" id="register-name" placeholder="Nama Lengkap Anda" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+
+            <div class="form-field">
+              <label for="register-email">Alamat Email</label>
+              <input type="email" id="register-email" placeholder="nama@email.com" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+            
+            <div class="form-field">
+              <label for="register-password">Kata Sandi</label>
+              <input type="password" id="register-password" placeholder="Minimal 6 karakter" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+
+            <div class="form-field">
+              <label for="register-confirm-password">Konfirmasi Kata Sandi</label>
+              <input type="password" id="register-confirm-password" placeholder="Ulangi kata sandi" required style="background: var(--bg-primary); border: 1px solid rgba(255, 255, 255, 0.1); padding: 14px 20px; border-radius: 8px;">
+            </div>
+
+            <button type="submit" id="btn-email-register" class="btn-cyber" style="width: 100%; text-align: center; padding: 14px 20px; font-size: 1.05rem; border: none; background: linear-gradient(90deg, var(--accent-purple), var(--accent-pink)); box-shadow: var(--shadow-neon-purple);">
+              Daftar Akun <i class="fa-solid fa-user-plus"></i>
+            </button>
+          </form>
+        </div>
 
         <div style="display: flex; align-items: center; text-align: center; margin: 25px 0; color: var(--text-muted); font-size: 0.85rem; font-family: var(--font-ui); letter-spacing: 1px;">
           <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
@@ -889,30 +1003,105 @@ function renderLoginView() {
   `;
 
   // Attach event handlers
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const loginPanel = document.getElementById('auth-login-panel');
+  const registerPanel = document.getElementById('auth-register-panel');
   const loginForm = document.getElementById('login-form');
+  const registerForm = document.getElementById('register-form');
   const btnEmailLogin = document.getElementById('btn-email-login');
+  const btnEmailRegister = document.getElementById('btn-email-register');
   const btnGoogle = document.getElementById('btn-google-login');
   const btnFacebook = document.getElementById('btn-facebook-login');
 
+  // Toggle tabs
+  tabLogin.addEventListener('click', () => {
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
+    loginPanel.style.display = 'block';
+    registerPanel.style.display = 'none';
+  });
+
+  tabRegister.addEventListener('click', () => {
+    tabRegister.classList.add('active');
+    tabLogin.classList.remove('active');
+    registerPanel.style.display = 'block';
+    loginPanel.style.display = 'none';
+  });
+
+  // Login form submission
   loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const email = document.getElementById('login-email').value;
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const password = document.getElementById('login-password').value;
     
     // Show loading state
     btnEmailLogin.setAttribute('disabled', 'true');
     btnEmailLogin.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
     setTimeout(() => {
-      // Extract name from email
-      const name = email.split('@')[0];
-      const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+      const users = getUsersFromDb();
+      const user = users.find(u => u.email === email);
+      
+      if (!user || user.password !== password) {
+        showToast("Login Gagal", "Email atau password salah!", "error");
+        btnEmailLogin.removeAttribute('disabled');
+        btnEmailLogin.innerHTML = `Masuk Sekarang <i class="fa-solid fa-right-to-bracket"></i>`;
+        return;
+      }
       
       loginUser({
-        email: email,
-        name: capitalizedName,
+        email: user.email,
+        name: user.name,
         type: 'email'
       });
-    }, 1500);
+    }, 1000);
+  });
+
+  // Register form submission
+  registerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('register-name').value.trim();
+    const email = document.getElementById('register-email').value.trim().toLowerCase();
+    const password = document.getElementById('register-password').value;
+    const confirmPassword = document.getElementById('register-confirm-password').value;
+    
+    if (password.length < 6) {
+      showToast("Error Pendaftaran", "Password minimal harus 6 karakter!", "error");
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      showToast("Error Pendaftaran", "Konfirmasi password tidak cocok!", "error");
+      return;
+    }
+    
+    btnEmailRegister.setAttribute('disabled', 'true');
+    btnEmailRegister.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
+    
+    setTimeout(() => {
+      const users = getUsersFromDb();
+      const exists = users.some(u => u.email === email);
+      
+      if (exists) {
+        showToast("Error Pendaftaran", "Email sudah terdaftar!", "error");
+        btnEmailRegister.removeAttribute('disabled');
+        btnEmailRegister.innerHTML = `Daftar Akun <i class="fa-solid fa-user-plus"></i>`;
+        return;
+      }
+      
+      // Save user to simulated DB
+      saveUserToDb({ name, email, password });
+      showToast("Registrasi Sukses", "Akun berhasil dibuat. Silakan login!", "success");
+      
+      // Toggle back to login tab
+      tabLogin.click();
+      document.getElementById('login-email').value = email;
+      document.getElementById('login-password').value = '';
+      
+      btnEmailRegister.removeAttribute('disabled');
+      btnEmailRegister.innerHTML = `Daftar Akun <i class="fa-solid fa-user-plus"></i>`;
+    }, 1000);
   });
 
   btnGoogle.addEventListener('click', () => {
@@ -920,12 +1109,20 @@ function renderLoginView() {
     btnGoogle.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
     setTimeout(() => {
-      loginUser({
+      const googleUser = {
         email: 'google.user@gmail.com',
         name: 'Google Gamer',
         type: 'google'
-      });
-    }, 1500);
+      };
+      
+      // Register mock user if not exists
+      const users = getUsersFromDb();
+      if (!users.some(u => u.email === googleUser.email)) {
+        saveUserToDb({ name: googleUser.name, email: googleUser.email, password: 'google_oauth_mock_password' });
+      }
+      
+      loginUser(googleUser);
+    }, 1000);
   });
 
   btnFacebook.addEventListener('click', () => {
@@ -933,13 +1130,109 @@ function renderLoginView() {
     btnFacebook.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
     setTimeout(() => {
-      loginUser({
+      const fbUser = {
         email: 'facebook.user@facebook.com',
         name: 'Facebook Fighter',
         type: 'facebook'
-      });
-    }, 1500);
+      };
+      
+      // Register mock user if not exists
+      const users = getUsersFromDb();
+      if (!users.some(u => u.email === fbUser.email)) {
+        saveUserToDb({ name: fbUser.name, email: fbUser.email, password: 'facebook_oauth_mock_password' });
+      }
+      
+      loginUser(fbUser);
+    }, 1000);
   });
+}
+
+// --- VIEW 8: TRANSACTION HISTORY ---
+function renderHistoryView() {
+  if (!appState.user) {
+    showToast("Akses Ditolak", "Harap masuk untuk melihat riwayat transaksi.", "error");
+    navigateTo('#/login');
+    return;
+  }
+  
+  const allTransactions = JSON.parse(localStorage.getItem('gamezone_transactions')) || [];
+  const userTransactions = allTransactions.filter(t => t.user_email === appState.user.email)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+  let tableBodyHTML = "";
+  if (userTransactions.length === 0) {
+    tableBodyHTML = `
+      <tr>
+        <td colspan="7" class="no-transactions">
+          <div style="margin: 20px 0;">
+            <i class="fa-solid fa-receipt" style="font-size: 3rem; color: var(--accent-purple); filter: drop-shadow(0 0 10px rgba(191, 90, 242, 0.5)); margin-bottom: 15px;"></i>
+            <p style="margin-top: 10px; font-family: var(--font-ui); font-size: 1.1rem; color: var(--text-secondary);">Belum ada riwayat transaksi top up.</p>
+            <a href="#/products" class="btn-cyber" style="margin-top: 20px; display: inline-block; padding: 12px 24px; font-size: 0.95rem;">Top Up Sekarang</a>
+          </div>
+        </td>
+      </tr>
+    `;
+  } else {
+    tableBodyHTML = userTransactions.map(t => {
+      let statusClass = "success";
+      if (t.status === "PENDING") statusClass = "pending";
+      if (t.status === "FAILED") statusClass = "failed";
+      
+      const playerDisplay = t.server_id ? `${t.user_game_id} (${t.server_id})` : t.user_game_id;
+      
+      return `
+        <tr class="fade-in">
+          <td style="font-weight: 700; color: var(--accent-cyan); font-family: monospace;">${t.id}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <img src="${t.game_image}" alt="${t.game_name}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
+              <span>${t.game_name}</span>
+            </div>
+          </td>
+          <td style="font-weight: 600;">${t.package_name}</td>
+          <td style="font-family: monospace;">${playerDisplay}</td>
+          <td style="color: var(--accent-yellow); font-weight: 700;">${t.formatted_price}</td>
+          <td>
+            <span style="font-weight: 700; font-family: var(--font-title); font-size: 0.85rem;">${t.payment_method}</span>
+          </td>
+          <td>
+            <span class="status-badge ${statusClass}">
+              <i class="fa-solid ${t.status === 'SUCCESS' ? 'fa-circle-check' : t.status === 'PENDING' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i>
+              ${t.status}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+  
+  appContent.innerHTML = `
+    <div class="container fade-in" style="padding-top: 40px;">
+      <div class="products-hero" style="text-align: left; padding: 20px 0;">
+        <h2 style="font-family: var(--font-title); font-size: 2.2rem; margin-bottom: 10px; color: #fff;">RIWAYAT <span style="color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);">TRANSAKSI</span></h2>
+        <p style="color: var(--text-secondary); max-width: 600px; margin: 0;">Berikut adalah daftar transaksi pengisian diamond, UC, atau Robux yang telah Anda lakukan pada akun ini.</p>
+      </div>
+      
+      <div class="cyber-table-container">
+        <table class="cyber-table">
+          <thead>
+            <tr>
+              <th>No. Invoice</th>
+              <th>Game</th>
+              <th>Item Paket</th>
+              <th>ID Game (Server)</th>
+              <th>Total Bayar</th>
+              <th>Metode</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableBodyHTML}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // 5. BOOTSTRAP INITIALIZATION & EVENTS
