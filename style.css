@@ -2111,3 +2111,53 @@ ul {
   margin-bottom: 15px;
 }
 
+/* ==========================================================================
+   ADMIN PANEL DASHBOARD
+   ========================================================================== */
+
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.admin-stat-card {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  transition: var(--transition-normal);
+}
+
+.admin-stat-card:hover {
+  transform: translateY(-5px);
+}
+
+.admin-status-select {
+  background: var(--bg-primary);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 6px 12px;
+  color: #fff;
+  font-family: var(--font-title);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.admin-status-select:focus, .admin-status-select:hover {
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+  background: var(--bg-secondary);
+}
+
+.admin-status-select option {
+  background: var(--bg-primary);
+  color: #fff;
+}
+

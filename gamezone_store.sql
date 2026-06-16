@@ -139,8 +139,17 @@ CREATE TABLE `users` (
   `name` varchar(100) NOT NULL,
   `email` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
+  `role` enum('admin','user') DEFAULT 'user',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `created_at`) VALUES
+(1, 'Admin GameZone', 'admin@gamezone.com', 'admin123', 'admin', '2026-06-16 07:00:00'),
+(2, 'User GameZone', 'user@gamezone.com', 'user123', 'user', '2026-06-16 07:00:00');
 
 --
 -- Indexes for dumped tables

@@ -75,10 +75,20 @@ const DEFAULT_GAMES_DATA = [
   }
 ];
 
-if (!localStorage.getItem('gamezone_games')) {
-  localStorage.setItem('gamezone_games', JSON.stringify(DEFAULT_GAMES_DATA));
+let GAMES_DATA = [];
+
+async function loadGamesData() {
+  try {
+    const response = await fetch('api/get_games.php');
+    if (!response.ok) throw new Error("HTTP error " + response.status);
+    GAMES_DATA = await response.json();
+    return true;
+  } catch (error) {
+    console.error("Gagal memuat data game dari database SQL, menggunakan fallback lokal:", error);
+    GAMES_DATA = DEFAULT_GAMES_DATA;
+    return false;
+  }
 }
-const GAMES_DATA = JSON.parse(localStorage.getItem('gamezone_games'));
 
 // 2. GLOBAL STATE
 let appState = {
@@ -96,9 +106,36 @@ function updateAuthNavbar() {
   
   if (!authContainer) return;
   
+  // Remove existing admin navigation items if any to avoid duplication
+  const oldAdminNav = document.getElementById('admin-nav-item');
+  const oldAdminFooter = document.getElementById('admin-footer-item');
+  if (oldAdminNav) oldAdminNav.remove();
+  if (oldAdminFooter) oldAdminFooter.remove();
+  
   if (appState.user) {
     if (historyNavItem) historyNavItem.style.display = 'block';
     if (historyFooterItem) historyFooterItem.style.display = 'block';
+    
+    // Check if admin to add admin links
+    if (appState.user.role === 'admin') {
+      // Create admin nav list item
+      const adminNavItem = document.createElement('li');
+      adminNavItem.className = 'nav-item';
+      adminNavItem.id = 'admin-nav-item';
+      adminNavItem.innerHTML = `<a href="#/admin" class="nav-link" data-path="/admin"><i class="fa-solid fa-user-gear"></i> Admin Panel</a>`;
+      
+      // Insert before authContainer
+      authContainer.parentNode.insertBefore(adminNavItem, authContainer);
+      
+      // Create admin footer item
+      const footerMenu = document.querySelector('.footer-menu');
+      if (footerMenu) {
+        const adminFooterItem = document.createElement('li');
+        adminFooterItem.id = 'admin-footer-item';
+        adminFooterItem.innerHTML = `<a href="#/admin"><i class="fa-solid fa-chevron-right list-arrow"></i> Admin Panel</a>`;
+        footerMenu.appendChild(adminFooterItem);
+      }
+    }
     
     authContainer.innerHTML = `
       <button id="btn-logout" class="nav-link auth-btn" style="border: none; background: transparent; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; font-family: var(--font-ui); font-size: 1.15rem; letter-spacing: 1px; color: var(--text-secondary);">
@@ -194,7 +231,7 @@ function navigateTo(hash) {
   window.location.hash = hash;
 }
 
-function renderView() {
+async function renderView() {
   const hash = window.location.hash || '#/';
   
   // Close navigation toggle first (for mobile views)
@@ -203,6 +240,32 @@ function renderView() {
   if (navMenu && navToggle) {
     navMenu.classList.remove('open');
     navToggle.classList.remove('open');
+  }
+
+  // Fetch games data from database if empty
+  if (GAMES_DATA.length === 0) {
+    appContent.innerHTML = `
+      <div class="loader-container">
+        <div class="cyber-spinner"></div>
+        <p class="loader-text">MENGHUBUNGKAN KE DATABASE...</p>
+      </div>
+    `;
+    await loadGamesData();
+  }
+
+  // Route protection / Authorization guards
+  if (hash === '#/history' && !appState.user) {
+    showToast("Akses Ditolak", "Silakan login terlebih dahulu untuk melihat riwayat.", "error");
+    navigateTo('#/login');
+    return;
+  }
+  
+  if (hash === '#/admin') {
+    if (!appState.user || appState.user.role !== 'admin') {
+      showToast("Akses Ditolak", "Hanya administrator yang dapat mengakses halaman ini.", "error");
+      navigateTo('#/');
+      return;
+    }
   }
 
   // Update dynamic auth navbar elements
@@ -230,6 +293,8 @@ function renderView() {
     renderLoginView();
   } else if (hash === '#/history') {
     renderHistoryView();
+  } else if (hash === '#/admin') {
+    renderAdminView();
   } else {
     // 404 Fallback
     renderHomeView();
@@ -256,6 +321,8 @@ function updateNavbarActiveState(hash) {
     } else if (hash.startsWith('#/contact') && path === '/contact') {
       link.classList.add('active');
     } else if (hash.startsWith('#/login') && path === '/login') {
+      link.classList.add('active');
+    } else if (hash.startsWith('#/admin') && path === '/admin') {
       link.classList.add('active');
     } else {
       link.classList.remove('active');
@@ -691,7 +758,7 @@ function renderCheckoutView(gameId) {
   }
 
   // Submit trigger
-  btnSubmit.addEventListener('click', () => {
+  btnSubmit.addEventListener('click', async () => {
     const finalUserId = userIdInput.value.trim();
     const finalServerId = serverIdInput ? serverIdInput.value.trim() : '';
 
@@ -704,47 +771,54 @@ function renderCheckoutView(gameId) {
     btnSubmit.setAttribute('disabled', 'true');
     btnSubmit.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
-    // Process payment response
-    setTimeout(() => {
-      // Generate unique invoice number: INV-timestamp-random
-      const timestamp = Math.floor(Date.now() / 1000);
-      const rand = Math.floor(100 + Math.random() * 900);
-      const invoiceId = `INV-${timestamp}-${rand}`;
+    // Generate unique invoice number: INV-timestamp-random
+    const timestamp = Math.floor(Date.now() / 1000);
+    const rand = Math.floor(100 + Math.random() * 900);
+    const invoiceId = `INV-${timestamp}-${rand}`;
+    
+    const newTransaction = {
+      id: invoiceId,
+      user_email: appState.user.email,
+      game_id: game.id,
+      package_id: pkg.id,
+      user_game_id: finalUserId,
+      server_id: finalServerId || null,
+      payment_method: appState.selectedPayment,
+      price: pkg.price,
+      formatted_price: pkg.formattedPrice,
+      status: 'SUCCESS'
+    };
+
+    try {
+      const response = await fetch('api/create_transaction.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTransaction)
+      });
+      const result = await response.json();
       
-      // Save to transactions in localStorage
-      const transactions = JSON.parse(localStorage.getItem('gamezone_transactions')) || [];
-      const newTransaction = {
-        id: invoiceId,
-        user_email: appState.user.email,
-        game_id: game.id,
-        game_name: game.name,
-        game_image: game.image,
-        package_id: pkg.id,
-        package_name: pkg.name,
-        user_game_id: finalUserId,
-        server_id: finalServerId || null,
-        payment_method: appState.selectedPayment,
-        price: pkg.price,
-        formatted_price: pkg.formattedPrice,
-        status: 'SUCCESS',
-        created_at: new Date().toISOString()
-      };
-      transactions.push(newTransaction);
-      localStorage.setItem('gamezone_transactions', JSON.stringify(transactions));
+      if (result.error) {
+        showToast("Transaksi Gagal", result.error, "error");
+        btnSubmit.removeAttribute('disabled');
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> Konfirmasi Pembelian`;
+      } else {
+        showToast("Transaksi Sukses!", `Top up ${pkg.name} berhasil diproses!`, "success");
+        
+        // Clear state
+        appState.selectedGame = null;
+        appState.selectedPackage = null;
+        appState.selectedPayment = null;
 
-      showToast("Transaksi Sukses!", `Top up ${pkg.name} berhasil diproses!`, "success");
-      
-      // Clear state
-      appState.selectedGame = null;
-      appState.selectedPackage = null;
-      appState.selectedPayment = null;
-
-      // Redirect history page
-      setTimeout(() => {
-        navigateTo('#/history');
-      }, 500);
-
-    }, 2000);
+        // Redirect history page
+        setTimeout(() => {
+          navigateTo('#/history');
+        }, 500);
+      }
+    } catch (err) {
+      showToast("Error", "Gagal menghubungi server!", "error");
+      btnSubmit.removeAttribute('disabled');
+      btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> Konfirmasi Pembelian`;
+    }
   });
 }
 
@@ -870,7 +944,7 @@ function renderContactView() {
 
   // Add listener to contact form
   const form = document.getElementById('contact-form');
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const name = document.getElementById('contact-name').value.trim();
@@ -881,23 +955,26 @@ function renderContactView() {
     btnSubmit.setAttribute('disabled', 'true');
     btnSubmit.innerHTML = `Memproses...`;
 
-    setTimeout(() => {
-      // Save contact message to localStorage database
-      const messages = JSON.parse(localStorage.getItem('gamezone_messages')) || [];
-      messages.push({
-        name: name,
-        email: email,
-        message: msg,
-        created_at: new Date().toISOString()
+    try {
+      const response = await fetch('api/send_message.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, message: msg })
       });
-      localStorage.setItem('gamezone_messages', JSON.stringify(messages));
-
-      showToast("Pesan Terkirim!", `Halo ${name}, pesan Anda berhasil dikirim! Tim kami akan menghubungi Anda segera.`, "success");
+      const result = await response.json();
       
-      form.reset();
+      if (result.error) {
+        showToast("Error", result.error, "error");
+      } else {
+        showToast("Pesan Terkirim!", `Halo ${name}, pesan Anda berhasil dikirim!`, "success");
+        form.reset();
+      }
+    } catch (err) {
+      showToast("Error", "Gagal menghubungi server!", "error");
+    } finally {
       btnSubmit.removeAttribute('disabled');
       btnSubmit.innerHTML = `Kirim Pesan <i class="fa-solid fa-paper-plane"></i>`;
-    }, 1500);
+    }
   });
 }
 
@@ -1030,7 +1107,7 @@ function renderLoginView() {
   });
 
   // Login form submission
-  loginForm.addEventListener('submit', (e) => {
+  loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value;
@@ -1039,27 +1116,36 @@ function renderLoginView() {
     btnEmailLogin.setAttribute('disabled', 'true');
     btnEmailLogin.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
 
-    setTimeout(() => {
-      const users = getUsersFromDb();
-      const user = users.find(u => u.email === email);
+    try {
+      const response = await fetch('api/login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const result = await response.json();
       
-      if (!user || user.password !== password) {
-        showToast("Login Gagal", "Email atau password salah!", "error");
+      if (result.error) {
+        showToast("Login Gagal", result.error, "error");
         btnEmailLogin.removeAttribute('disabled');
         btnEmailLogin.innerHTML = `Masuk Sekarang <i class="fa-solid fa-right-to-bracket"></i>`;
         return;
       }
       
       loginUser({
-        email: user.email,
-        name: user.name,
+        email: result.email,
+        name: result.name,
+        role: result.role,
         type: 'email'
       });
-    }, 1000);
+    } catch (err) {
+      showToast("Error", "Gagal menghubungi server!", "error");
+      btnEmailLogin.removeAttribute('disabled');
+      btnEmailLogin.innerHTML = `Masuk Sekarang <i class="fa-solid fa-right-to-bracket"></i>`;
+    }
   });
 
   // Register form submission
-  registerForm.addEventListener('submit', (e) => {
+  registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim().toLowerCase();
@@ -1079,19 +1165,21 @@ function renderLoginView() {
     btnEmailRegister.setAttribute('disabled', 'true');
     btnEmailRegister.innerHTML = `<div class="cyber-spinner" style="width: 20px; height: 20px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px;"></div> Memproses...`;
     
-    setTimeout(() => {
-      const users = getUsersFromDb();
-      const exists = users.some(u => u.email === email);
+    try {
+      const response = await fetch('api/register.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const result = await response.json();
       
-      if (exists) {
-        showToast("Error Pendaftaran", "Email sudah terdaftar!", "error");
+      if (result.error) {
+        showToast("Error Pendaftaran", result.error, "error");
         btnEmailRegister.removeAttribute('disabled');
         btnEmailRegister.innerHTML = `Daftar Akun <i class="fa-solid fa-user-plus"></i>`;
         return;
       }
       
-      // Save user to simulated DB
-      saveUserToDb({ name, email, password });
       showToast("Registrasi Sukses", "Akun berhasil dibuat. Silakan login!", "success");
       
       // Toggle back to login tab
@@ -1099,9 +1187,12 @@ function renderLoginView() {
       document.getElementById('login-email').value = email;
       document.getElementById('login-password').value = '';
       
+    } catch (err) {
+      showToast("Error", "Gagal menghubungi server!", "error");
+    } finally {
       btnEmailRegister.removeAttribute('disabled');
       btnEmailRegister.innerHTML = `Daftar Akun <i class="fa-solid fa-user-plus"></i>`;
-    }, 1000);
+    }
   });
 
   btnGoogle.addEventListener('click', () => {
@@ -1112,15 +1203,9 @@ function renderLoginView() {
       const googleUser = {
         email: 'google.user@gmail.com',
         name: 'Google Gamer',
+        role: 'user',
         type: 'google'
       };
-      
-      // Register mock user if not exists
-      const users = getUsersFromDb();
-      if (!users.some(u => u.email === googleUser.email)) {
-        saveUserToDb({ name: googleUser.name, email: googleUser.email, password: 'google_oauth_mock_password' });
-      }
-      
       loginUser(googleUser);
     }, 1000);
   });
@@ -1133,106 +1218,364 @@ function renderLoginView() {
       const fbUser = {
         email: 'facebook.user@facebook.com',
         name: 'Facebook Fighter',
+        role: 'user',
         type: 'facebook'
       };
-      
-      // Register mock user if not exists
-      const users = getUsersFromDb();
-      if (!users.some(u => u.email === fbUser.email)) {
-        saveUserToDb({ name: fbUser.name, email: fbUser.email, password: 'facebook_oauth_mock_password' });
-      }
-      
       loginUser(fbUser);
     }, 1000);
   });
 }
 
 // --- VIEW 8: TRANSACTION HISTORY ---
-function renderHistoryView() {
+async function renderHistoryView() {
   if (!appState.user) {
     showToast("Akses Ditolak", "Harap masuk untuk melihat riwayat transaksi.", "error");
     navigateTo('#/login');
     return;
   }
   
-  const allTransactions = JSON.parse(localStorage.getItem('gamezone_transactions')) || [];
-  const userTransactions = allTransactions.filter(t => t.user_email === appState.user.email)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  appContent.innerHTML = `
+    <div class="container fade-in" style="padding-top: 40px;">
+      <div class="loader-container">
+        <div class="cyber-spinner"></div>
+        <p class="loader-text">MEMUAT RIWAYAT TRANSAKSI...</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch(`api/get_transactions.php?email=${encodeURIComponent(appState.user.email)}`);
+    const userTransactions = await response.json();
     
-  let tableBodyHTML = "";
-  if (userTransactions.length === 0) {
-    tableBodyHTML = `
-      <tr>
-        <td colspan="7" class="no-transactions">
-          <div style="margin: 20px 0;">
-            <i class="fa-solid fa-receipt" style="font-size: 3rem; color: var(--accent-purple); filter: drop-shadow(0 0 10px rgba(191, 90, 242, 0.5)); margin-bottom: 15px;"></i>
-            <p style="margin-top: 10px; font-family: var(--font-ui); font-size: 1.1rem; color: var(--text-secondary);">Belum ada riwayat transaksi top up.</p>
-            <a href="#/products" class="btn-cyber" style="margin-top: 20px; display: inline-block; padding: 12px 24px; font-size: 0.95rem;">Top Up Sekarang</a>
-          </div>
-        </td>
-      </tr>
-    `;
-  } else {
-    tableBodyHTML = userTransactions.map(t => {
-      let statusClass = "success";
-      if (t.status === "PENDING") statusClass = "pending";
-      if (t.status === "FAILED") statusClass = "failed";
-      
-      const playerDisplay = t.server_id ? `${t.user_game_id} (${t.server_id})` : t.user_game_id;
-      
-      return `
-        <tr class="fade-in">
-          <td style="font-weight: 700; color: var(--accent-cyan); font-family: monospace;">${t.id}</td>
-          <td>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="${t.game_image}" alt="${t.game_name}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
-              <span>${t.game_name}</span>
+    let tableBodyHTML = "";
+    if (userTransactions.error) {
+      showToast("Error", userTransactions.error, "error");
+      tableBodyHTML = `<tr><td colspan="7" class="no-transactions" style="color: var(--accent-pink);">${userTransactions.error}</td></tr>`;
+    } else if (userTransactions.length === 0) {
+      tableBodyHTML = `
+        <tr>
+          <td colspan="7" class="no-transactions">
+            <div style="margin: 20px 0;">
+              <i class="fa-solid fa-receipt" style="font-size: 3rem; color: var(--accent-purple); filter: drop-shadow(0 0 10px rgba(191, 90, 242, 0.5)); margin-bottom: 15px;"></i>
+              <p style="margin-top: 10px; font-family: var(--font-ui); font-size: 1.1rem; color: var(--text-secondary);">Belum ada riwayat transaksi top up.</p>
+              <a href="#/products" class="btn-cyber" style="margin-top: 20px; display: inline-block; padding: 12px 24px; font-size: 0.95rem;">Top Up Sekarang</a>
             </div>
           </td>
-          <td style="font-weight: 600;">${t.package_name}</td>
-          <td style="font-family: monospace;">${playerDisplay}</td>
+        </tr>
+      `;
+    } else {
+      tableBodyHTML = userTransactions.map(t => {
+        let statusClass = "success";
+        if (t.status === "PENDING") statusClass = "pending";
+        if (t.status === "FAILED") statusClass = "failed";
+        
+        const playerDisplay = t.server_id ? `${t.user_game_id} (${t.server_id})` : t.user_game_id;
+        const gameImg = t.game_image || `images/${t.game_id}_banner.jpg`;
+        const gameName = t.game_name || t.game_id.toUpperCase();
+
+        return `
+          <tr class="fade-in">
+            <td style="font-weight: 700; color: var(--accent-cyan); font-family: monospace;">${t.id}</td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="${gameImg}" alt="${gameName}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);" onerror="this.src='https://placehold.co/100x100/121624/00f0ff?text=${t.game_id}'">
+                <span>${gameName}</span>
+              </div>
+            </td>
+            <td style="font-weight: 600;">${t.package_name || t.package_id}</td>
+            <td style="font-family: monospace;">${playerDisplay}</td>
+            <td style="color: var(--accent-yellow); font-weight: 700;">${t.formatted_price}</td>
+            <td>
+              <span style="font-weight: 700; font-family: var(--font-title); font-size: 0.85rem;">${t.payment_method}</span>
+            </td>
+            <td>
+              <span class="status-badge ${statusClass}">
+                <i class="fa-solid ${t.status === 'SUCCESS' ? 'fa-circle-check' : t.status === 'PENDING' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i>
+                ${t.status}
+              </span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+    
+    appContent.innerHTML = `
+      <div class="container fade-in" style="padding-top: 40px;">
+        <div class="products-hero" style="text-align: left; padding: 20px 0;">
+          <h2 style="font-family: var(--font-title); font-size: 2.2rem; margin-bottom: 10px; color: #fff;">RIWAYAT <span style="color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);">TRANSAKSI</span></h2>
+          <p style="color: var(--text-secondary); max-width: 600px; margin: 0;">Berikut adalah daftar transaksi pengisian diamond, UC, atau Robux yang telah Anda lakukan pada akun ini.</p>
+        </div>
+        
+        <div class="cyber-table-container">
+          <table class="cyber-table">
+            <thead>
+              <tr>
+                <th>No. Invoice</th>
+                <th>Game</th>
+                <th>Item Paket</th>
+                <th>ID Game (Server)</th>
+                <th>Total Bayar</th>
+                <th>Metode</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableBodyHTML}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    showToast("Error", "Gagal memuat riwayat transaksi dari server!", "error");
+  }
+}
+
+// --- VIEW 9: ADMIN PANEL ---
+async function renderAdminView() {
+  if (!appState.user || appState.user.role !== 'admin') {
+    showToast("Akses Ditolak", "Anda tidak memiliki akses administrator.", "error");
+    navigateTo('#/');
+    return;
+  }
+
+  appContent.innerHTML = `
+    <div class="container fade-in" style="padding-top: 40px;">
+      <div class="loader-container">
+        <div class="cyber-spinner"></div>
+        <p class="loader-text">MEMUAT DASHBOARD ADMIN...</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const emailParam = encodeURIComponent(appState.user.email);
+    const [txResponse, msgResponse] = await Promise.all([
+      fetch(`api/get_transactions.php?email=${emailParam}`),
+      fetch(`api/get_messages.php?email=${emailParam}`)
+    ]);
+
+    const transactions = await txResponse.json();
+    const messages = await msgResponse.json();
+
+    if (transactions.error || messages.error) {
+      showToast("Error", transactions.error || messages.error, "error");
+      navigateTo('#/');
+      return;
+    }
+
+    const totalOrders = transactions.length;
+    const successTransactions = transactions.filter(t => t.status === 'SUCCESS');
+    const totalRevenue = successTransactions.reduce((acc, t) => acc + t.price, 0);
+    const formattedRevenue = 'Rp ' + totalRevenue.toLocaleString('id-ID');
+    const uniqueEmails = [...new Set(transactions.map(t => t.user_email))];
+    const totalUsers = uniqueEmails.length;
+    const totalMessages = messages.length;
+
+    const txRows = transactions.map(t => {
+      const playerDisplay = t.server_id ? `${t.user_game_id} (${t.server_id})` : t.user_game_id;
+      const gameImg = t.game_image || `images/${t.game_id}_banner.jpg`;
+      const gameName = t.game_name || t.game_id.toUpperCase();
+
+      return `
+        <tr>
+          <td style="font-weight: 700; color: var(--accent-cyan); font-family: monospace;">${t.id}</td>
+          <td style="font-size: 0.9rem;">${t.user_email}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <img src="${gameImg}" alt="${gameName}" style="width: 28px; height: 28px; border-radius: 4px; object-fit: cover;" onerror="this.src='https://placehold.co/100x100/121624/00f0ff?text=${t.game_id}'">
+              <span>${gameName}</span>
+            </div>
+          </td>
+          <td style="font-size: 0.95rem; font-weight: 600;">${t.package_name || t.package_id}</td>
+          <td style="font-family: monospace; font-size: 0.9rem;">${playerDisplay}</td>
           <td style="color: var(--accent-yellow); font-weight: 700;">${t.formatted_price}</td>
           <td>
-            <span style="font-weight: 700; font-family: var(--font-title); font-size: 0.85rem;">${t.payment_method}</span>
-          </td>
-          <td>
-            <span class="status-badge ${statusClass}">
-              <i class="fa-solid ${t.status === 'SUCCESS' ? 'fa-circle-check' : t.status === 'PENDING' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i>
-              ${t.status}
-            </span>
+            <select class="admin-status-select" data-tx-id="${t.id}" style="background: var(--bg-primary); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 6px 12px; color: #fff; font-family: var(--font-title); font-size: 0.8rem; font-weight: 600; cursor: pointer; outline: none; transition: var(--transition-fast);">
+              <option value="PENDING" ${t.status === 'PENDING' ? 'selected' : ''} style="color: var(--accent-yellow);">PENDING</option>
+              <option value="SUCCESS" ${t.status === 'SUCCESS' ? 'selected' : ''} style="color: #4cd964;">SUCCESS</option>
+              <option value="FAILED" ${t.status === 'FAILED' ? 'selected' : ''} style="color: var(--accent-pink);">FAILED</option>
+            </select>
           </td>
         </tr>
       `;
     }).join('');
-  }
-  
-  appContent.innerHTML = `
-    <div class="container fade-in" style="padding-top: 40px;">
-      <div class="products-hero" style="text-align: left; padding: 20px 0;">
-        <h2 style="font-family: var(--font-title); font-size: 2.2rem; margin-bottom: 10px; color: #fff;">RIWAYAT <span style="color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);">TRANSAKSI</span></h2>
-        <p style="color: var(--text-secondary); max-width: 600px; margin: 0;">Berikut adalah daftar transaksi pengisian diamond, UC, atau Robux yang telah Anda lakukan pada akun ini.</p>
-      </div>
-      
-      <div class="cyber-table-container">
-        <table class="cyber-table">
-          <thead>
+
+    const msgRows = messages.length === 0 
+      ? `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 30px;">Tidak ada pesan masuk.</td></tr>`
+      : messages.map(m => {
+          const formattedDate = new Date(m.created_at).toLocaleString('id-ID');
+          return `
             <tr>
-              <th>No. Invoice</th>
-              <th>Game</th>
-              <th>Item Paket</th>
-              <th>ID Game (Server)</th>
-              <th>Total Bayar</th>
-              <th>Metode</th>
-              <th>Status</th>
+              <td style="font-weight: 700; color: #fff;">${m.name}</td>
+              <td style="color: var(--accent-cyan); font-family: monospace;">${m.email}</td>
+              <td style="color: var(--text-secondary); line-height: 1.4; max-width: 350px; white-space: normal; word-break: break-all;">${m.message}</td>
+              <td style="font-size: 0.85rem; color: var(--text-muted);">${formattedDate}</td>
             </tr>
-          </thead>
-          <tbody>
-            ${tableBodyHTML}
-          </tbody>
-        </table>
+          `;
+        }).join('');
+
+    appContent.innerHTML = `
+      <div class="container fade-in" style="padding-top: 40px;">
+        <div class="products-hero" style="text-align: left; padding: 20px 0;">
+          <h2 style="font-family: var(--font-title); font-size: 2.2rem; margin-bottom: 10px; color: #fff;">PANEL <span style="color: var(--accent-purple); text-shadow: 0 0 10px rgba(191, 90, 242, 0.4);">ADMINISTRATOR</span></h2>
+          <p style="color: var(--text-secondary); max-width: 600px; margin: 0;">Kontrol transaksi top up game, ubah status invoice, dan lihat pesan feedback pelanggan secara langsung dari database SQL.</p>
+        </div>
+
+        <div class="admin-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 40px;">
+          <div class="admin-stat-card" style="background: var(--bg-secondary); border: 1px solid rgba(0, 240, 255, 0.2); box-shadow: 0 0 10px rgba(0, 240, 255, 0.1); border-radius: 10px; padding: 24px; display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 2.5rem; color: var(--accent-cyan); filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.4));"><i class="fa-solid fa-sack-dollar"></i></div>
+            <div>
+              <h4 style="font-family: var(--font-ui); font-size: 0.95rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">Pendapatan Bersih</h4>
+              <p style="font-family: var(--font-title); font-size: 1.45rem; font-weight: 800; color: var(--accent-yellow);">${formattedRevenue}</p>
+            </div>
+          </div>
+          
+          <div class="admin-stat-card" style="background: var(--bg-secondary); border: 1px solid rgba(191, 90, 242, 0.2); box-shadow: 0 0 10px rgba(191, 90, 242, 0.1); border-radius: 10px; padding: 24px; display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 2.5rem; color: var(--accent-purple); filter: drop-shadow(0 0 8px rgba(191, 90, 242, 0.4));"><i class="fa-solid fa-receipt"></i></div>
+            <div>
+              <h4 style="font-family: var(--font-ui); font-size: 0.95rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">Total Pesanan</h4>
+              <p style="font-family: var(--font-title); font-size: 1.6rem; font-weight: 800; color: #fff;">${totalOrders}</p>
+            </div>
+          </div>
+
+          <div class="admin-stat-card" style="background: var(--bg-secondary); border: 1px solid rgba(255, 45, 85, 0.2); box-shadow: 0 0 10px rgba(255, 45, 85, 0.1); border-radius: 10px; padding: 24px; display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 2.5rem; color: var(--accent-pink); filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.4));"><i class="fa-solid fa-users"></i></div>
+            <div>
+              <h4 style="font-family: var(--font-ui); font-size: 0.95rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">Pelanggan Unik</h4>
+              <p style="font-family: var(--font-title); font-size: 1.6rem; font-weight: 800; color: #fff;">${totalUsers}</p>
+            </div>
+          </div>
+
+          <div class="admin-stat-card" style="background: var(--bg-secondary); border: 1px solid rgba(0, 240, 255, 0.2); box-shadow: 0 0 10px rgba(0, 240, 255, 0.1); border-radius: 10px; padding: 24px; display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 2.5rem; color: var(--accent-cyan); filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.4));"><i class="fa-solid fa-comment-dots"></i></div>
+            <div>
+              <h4 style="font-family: var(--font-ui); font-size: 0.95rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">Pesan Masuk</h4>
+              <p style="font-family: var(--font-title); font-size: 1.6rem; font-weight: 800; color: #fff;">${totalMessages}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-tabs" style="margin-bottom: 30px;">
+          <button id="admin-tab-tx" class="auth-tab active">Kelola Transaksi</button>
+          <button id="admin-tab-msg" class="auth-tab">Pesan Masuk</button>
+        </div>
+
+        <div id="admin-tx-panel">
+          <div class="cyber-table-container">
+            <table class="cyber-table">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Email Pembeli</th>
+                  <th>Game</th>
+                  <th>Paket</th>
+                  <th>ID (Server)</th>
+                  <th>Total</th>
+                  <th>Ubah Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${txRows ? txRows : '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">Belum ada data transaksi.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="admin-msg-panel" style="display: none;">
+          <div class="cyber-table-container">
+            <table class="cyber-table">
+              <thead>
+                <tr>
+                  <th>Nama Pengirim</th>
+                  <th>Email</th>
+                  <th>Isi Pesan</th>
+                  <th>Tanggal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${msgRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+
+    const tabTx = document.getElementById('admin-tab-tx');
+    const tabMsg = document.getElementById('admin-tab-msg');
+    const panelTx = document.getElementById('admin-tx-panel');
+    const panelMsg = document.getElementById('admin-msg-panel');
+
+    tabTx.addEventListener('click', () => {
+      tabTx.classList.add('active');
+      tabMsg.classList.remove('active');
+      panelTx.style.display = 'block';
+      panelMsg.style.display = 'none';
+    });
+
+    tabMsg.addEventListener('click', () => {
+      tabMsg.classList.add('active');
+      tabTx.classList.remove('active');
+      panelMsg.style.display = 'block';
+      panelTx.style.display = 'none';
+    });
+
+    const selects = document.querySelectorAll('.admin-status-select');
+    selects.forEach(select => {
+      const updateSelectStyle = (el) => {
+        if (el.value === 'PENDING') {
+          el.style.borderColor = 'var(--accent-yellow)';
+          el.style.color = 'var(--accent-yellow)';
+        } else if (el.value === 'SUCCESS') {
+          el.style.borderColor = '#4cd964';
+          el.style.color = '#4cd964';
+        } else if (el.value === 'FAILED') {
+          el.style.borderColor = 'var(--accent-pink)';
+          el.style.color = 'var(--accent-pink)';
+        }
+      };
+      updateSelectStyle(select);
+
+      select.addEventListener('change', async () => {
+        const txId = select.getAttribute('data-tx-id');
+        const newStatus = select.value;
+        updateSelectStyle(select);
+
+        select.setAttribute('disabled', 'true');
+
+        try {
+          const response = await fetch('api/update_transaction_status.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              admin_email: appState.user.email,
+              transaction_id: txId,
+              status: newStatus
+            })
+          });
+          const result = await response.json();
+
+          if (result.error) {
+            showToast("Gagal Memperbarui", result.error, "error");
+            renderAdminView();
+          } else {
+            showToast("Sukses", `Status invoice ${txId} diubah menjadi ${newStatus}!`, "success");
+            setTimeout(() => {
+              renderAdminView();
+            }, 300);
+          }
+        } catch (err) {
+          showToast("Error", "Gagal menghubungi database server!", "error");
+          renderAdminView();
+        }
+      });
+    });
+
+  } catch (err) {
+    showToast("Error", "Gagal memuat data administrator dari database!", "error");
+    navigateTo('#/');
+  }
 }
 
 // 5. BOOTSTRAP INITIALIZATION & EVENTS
