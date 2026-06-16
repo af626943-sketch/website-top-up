@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GameZone Store - Top Up Game Online Modern & Cepat</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description"
+    content="GameZone Store adalah platform top up game online terpercaya, termurah, dan tercepat dengan desain futuristik.Top up MLBB, Free Fire, PUBG, dan Roblox.">
+  <meta name="keywords"
+    content="top up game, diamond mlbb, uc pubg, robux roblox, free fire, gamezone store, top up murah">
+  <meta name="author" content="GameZone Store Team">
+
+  <!-- Fonts: Orbitron (Futuristic) and Rajdhani/Inter (UI) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- FontAwesome Icons for gaming, contact, and UI symbols -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Custom CSS stylesheet -->
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+
+<body>
+  <!-- Futuristic Cyberpunk Grid BG Effect -->
+  <div class="cyber-grid-overlay"></div>
+  <div class="glow-effect glow-1"></div>
+  <div class="glow-effect glow-2"></div>
+
+  <!-- Header & Navigation Bar -->
+  <header class="header">
+    <div class="container navbar-container">
+      <a href="#/" class="logo">
+        <i class="fa-solid fa-gamepad logo-icon"></i>
+        <span>GAMEZONE<span class="highlight">STORE</span></span>
+      </a>
+
+      <!-- Hamburger Menu for Mobile View -->
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle Navigation">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+      </button>
+
+      <nav class="nav-menu" id="nav-menu">
+        <ul class="nav-list">
+          <li class="nav-item"><a href="#/" class="nav-link active" data-path="/">Home</a></li>
+          <li class="nav-item"><a href="#/products" class="nav-link" data-path="/products">Products</a></li>
+          <li class="nav-item"><a href="#/about" class="nav-link" data-path="/about">About Us</a></li>
+          <li class="nav-item"><a href="#/contact" class="nav-link" data-path="/contact">Contact</a></li>
+          <li class="nav-item" id="auth-nav-item"></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content Area where SPA views are injected -->
+  <main id="app-content" class="main-content">
+    <!-- Dynamic content will load here from app.js -->
+    <div class="loader-container">
+      <div class="cyber-spinner"></div>
+      <p class="loader-text">INITIALIZING SYSTEM...</p>
+    </div>
+  </main>
+
+  <!-- Toast Notification System -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-top">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <a href="#/" class="logo footer-logo">
+            <i class="fa-solid fa-gamepad logo-icon"></i>
+            <span>GAMEZONE<span class="highlight">STORE</span></span>
+          </a>
+          <p class="footer-desc">
+            Destinasi top up game online tercepat, teraman, dan terpercaya. Upgrade akun game favoritmu dengan sekali
+            klik. Nikmati harga hemat & proses kilat 24/7.
+          </p>
+          <div class="social-links">
+            <a href="#" class="social-btn" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+            <a href="#" class="social-btn" aria-label="Tiktok"><i class="fa-brands fa-tiktok"></i></a>
+            <a href="#" class="social-btn" aria-label="Discord"><i class="fa-brands fa-discord"></i></a>
+            <a href="#" class="social-btn" aria-label="YouTube"><i class="fa-brands fa-youtube"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-links">
+          <h3 class="footer-title">Menu Utama</h3>
+          <ul class="footer-menu">
+            <li><a href="#/"><i class="fa-solid fa-chevron-right list-arrow"></i> Beranda</a></li>
+            <li><a href="#/products"><i class="fa-solid fa-chevron-right list-arrow"></i> Produk Top Up</a></li>
+            <li><a href="#/about"><i class="fa-solid fa-chevron-right list-arrow"></i> Tentang Kami</a></li>
+            <li><a href="#/contact"><i class="fa-solid fa-chevron-right list-arrow"></i> Hubungi Kami</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h3 class="footer-title">Top Game</h3>
+          <ul class="footer-menu">
+            <li><a href="#/detail/mlbb"><i class="fa-solid fa-chevron-right list-arrow"></i> Mobile Legends</a></li>
+            <li><a href="#/detail/ff"><i class="fa-solid fa-chevron-right list-arrow"></i> Free Fire</a></li>
+            <li><a href="#/detail/pubg"><i class="fa-solid fa-chevron-right list-arrow"></i> PUBG Mobile</a></li>
+            <li><a href="#/detail/roblox"><i class="fa-solid fa-chevron-right list-arrow"></i> Roblox</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-info">
+          <h3 class="footer-title">Layanan & Bantuan</h3>
+          <ul class="footer-contact-info">
+            <li>
+              <i class="fa-solid fa-clock info-icon"></i>
+              <span>Layanan Pelanggan: 24/7 (Non-stop)</span>
+            </li>
+            <li>
+              <i class="fa-solid fa-envelope info-icon"></i>
+              <span>support@gamezonestore.my.id</span>
+            </li>
+            <li>
+              <i class="fa-solid fa-location-dot info-icon"></i>
+              <span>Cyber City, Sektor 4, No. 101, Jakarta, Indonesia</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div class="container bottom-container">
+        <p class="copyright">&copy; 2026 GameZone Store. Hak Cipta Dilindungi Undang-Undang.</p>
+      </div>
+  </footer>
+
+  <!-- App Main Javascript -->
+  <script src="app.js?v=2"></script>
+</body>
+
+</html>
